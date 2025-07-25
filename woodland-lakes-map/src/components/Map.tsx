@@ -33,10 +33,23 @@ const Map: React.FC = () => {
 
       // Add property lines from GeoJSON
       L.geoJSON(propertyLines, {
-        style: {
-          color: '#0080ff',
-          weight: 2,
-          opacity: 0.7,
+        style: (feature) => {
+          if (feature?.properties?.highway) {
+            switch (feature.properties.highway) {
+              case 'residential':
+                return { color: '#f00', weight: 2, opacity: 0.7 };
+              case 'service':
+                return  { color: '#ffa500', weight: 2, opacity: 0.7 };
+              case 'track':
+                return { color: '#00f', weight: 2, opacity: 0.7 };
+              default:
+                return { color: '#fff', weight: 0, opacity: 0 };
+            }
+          }
+          if (feature?.properties?.natural === 'water') {
+            return { color: '#1ca3ec', weight: 2, opacity: 0.7 };
+          }
+          return { color: '#888', weight: 2, opacity: 0.7 };
         },
       }).addTo(initialMap);
 
