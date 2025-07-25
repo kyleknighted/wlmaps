@@ -1,0 +1,41 @@
+export const markers = [
+  {
+    lot: "Lot 1",
+    block: "A",
+    section: "1",
+    lat: 40.123456,
+    lng: -74.123456,
+    label: "Community Center",
+    isSpecialLocation: true,
+  },
+  {
+    lot: "Lot 2",
+    block: "A",
+    section: "1",
+    lat: 40.123789,
+    lng: -74.123789,
+    label: "Office",
+    isSpecialLocation: true,
+  },
+  {
+    lot: "Lot 5",
+    block: "C",
+    section: "2",
+    lat: 40.124567,
+    lng: -74.124567,
+  },
+  {
+    lot: "Lot 3",
+    block: "B",
+    section: "1",
+    lat: 40.125678,
+    lng: -74.125678,
+  },
+  {
+    lot: "Lot 4",
+    block: "B",
+    section: "2",
+    lat: 40.126789,
+    lng: -74.126789,
+  },
+];

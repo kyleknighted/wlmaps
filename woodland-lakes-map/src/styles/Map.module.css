@@ -1,0 +1,34 @@
+.mapContainer {
+  position: relative;
+  width: 100%;
+  height: 100vh;
+}
+
+.searchInput {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 1000;
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background-color: white;
+}
+
+.marker {
+  background-color: red;
+  border-radius: 50%;
+  width: 10px;
+  height: 10px;
+  position: absolute;
+  transform: translate(-50%, -50%);
+}
+
+.specialMarker {
+  background-color: blue;
+}
+
+.map {
+  width: 100%;
+  height: 100%;
+}

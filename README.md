@@ -1,3 +1,0 @@
-# wlmaps
-
-Woodland Lakes Maps
