@@ -4,25 +4,69 @@ import 'leaflet/dist/leaflet.css';
 import styles from '../styles/Map.module.css';
 import { Marker } from '../types/marker';
 import { markers } from '../data/markers';
-import propertyLines from '../data/map.json'; // Adjust path as needed
+import streetLines from '../data/streetMap.json';
+import washMo from '../data/washmo.filtered.json';
+
+type SearchTerm = {
+  lot?: string;
+  block?: string;
+  section?: string;
+};
 
 const Map: React.FC = () => {
   const mapRef = useRef<HTMLDivElement | null>(null);
   const [map, setMap] = useState<L.Map | null>(null);
   const [userLocation, setUserLocation] = useState<L.LatLng | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filteredMarkers, setFilteredMarkers] = useState<Marker[]>(markers);
+  const [searchTerm, setSearchTerm] = useState<SearchTerm>({});
+  const [filteredMarkers, setFilteredMarkers] = useState<Marker[]>([]);
+  const markerLayerGroup = useRef<L.LayerGroup | null>(null);
 
+  // Helper: Regex can match both "LOT" and "LT" for the lot, and handles flexible whitespace/case.
+  const getLegalDescRegex = (lot?: string, block?: string, sec?: string) => {
+    if (!lot || !block || !sec) return null;
+    // Matches "LT" or "LOT", then number, then "BLK" number, then "SEC" number, order matters
+    // E.g., "LT 10 BLK 2 SEC 5", "LOT 10 BLK 2 SEC 5"
+    return new RegExp(
+      `\\b(LT|LOT)\\s*${lot}\\b.*\\bBLK\\s*${block}\\b.*\\bSEC\\s*${sec}\\b`,
+      "i"
+    );
+  };
+
+  // Add/remove property markers as a group
+  useEffect(() => {
+    if (map) {
+      // Remove old group
+      if (markerLayerGroup.current) {
+        markerLayerGroup.current.remove();
+        markerLayerGroup.current = null;
+      }
+      // Add new group if there are any markers
+      if (filteredMarkers.length > 0) {
+        const group = L.layerGroup();
+        filteredMarkers.forEach((marker) => {
+          const icon = marker.isSpecialLocation
+            ? L.icon({ iconUrl: '/special-marker.png', iconSize: [24, 24] })
+            : undefined;
+          const markerInstance = L.marker([marker.lat, marker.lng], icon ? { icon } : {})
+            .bindPopup(marker.label || '');
+          group.addLayer(markerInstance);
+        });
+        group.addTo(map);
+        markerLayerGroup.current = group;
+      }
+    }
+  }, [map, filteredMarkers]);
+
+  // Initialize map and base layers
   useEffect(() => {
     if (mapRef.current && !map) {
-      const initialMap = L.map(mapRef.current).setView([38.11288, -91.06786], 1);
+      const initialMap = L.map(mapRef.current).setView([38.11288, -91.06786], 15);
 
       L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19,
         minZoom: 14,
       }).addTo(initialMap);
 
-      // Set the bounds to your desired area (replace with your actual SW/NE coordinates)
       const bounds: L.LatLngBoundsExpression = [
         [38.091, -91.093], // Southwest corner
         [38.139, -91.048], // Northeast corner
@@ -31,17 +75,12 @@ const Map: React.FC = () => {
       // @ts-expect-error: setMaxBoundsViscosity may not be typed in leaflet
       initialMap.setMaxBoundsViscosity?.(1.0);
 
-      // Add property lines from GeoJSON
-      L.geoJSON(propertyLines, {
+      L.geoJSON(streetLines, {
         style: (feature) => {
           if (feature?.properties?.highway) {
             switch (feature.properties.highway) {
               case 'residential':
                 return { color: '#f00', weight: 2, opacity: 0.7 };
-              case 'service':
-                return  { color: '#ffa500', weight: 2, opacity: 0.7 };
-              case 'track':
-                return { color: '#00f', weight: 2, opacity: 0.7 };
               default:
                 return { color: '#fff', weight: 0, opacity: 0 };
             }
@@ -49,7 +88,7 @@ const Map: React.FC = () => {
           if (feature?.properties?.natural === 'water') {
             return { color: '#1ca3ec', weight: 2, opacity: 0.7 };
           }
-          return { color: '#888', weight: 2, opacity: 0.7 };
+          return { color: '#fff', weight: 0, opacity: 0 };
         },
       }).addTo(initialMap);
 
@@ -57,24 +96,7 @@ const Map: React.FC = () => {
     }
   }, [mapRef, map]);
 
-  useEffect(() => {
-    if (map) {
-      map.eachLayer((layer) => {
-        if (layer instanceof L.Marker) {
-          map.removeLayer(layer);
-        }
-      });
-
-      filteredMarkers.forEach((marker) => {
-        const icon = marker.isSpecialLocation
-          ? L.icon({ iconUrl: '/special-marker.png', iconSize: [24, 24] })
-          : undefined;
-        const markerInstance = L.marker([marker.lat, marker.lng], icon ? { icon } : {}).addTo(map);
-        markerInstance.bindPopup(marker.label || `${marker.lot}, ${marker.block}, ${marker.section}`);
-      });
-    }
-  }, [map, filteredMarkers]);
-
+  // User location marker
   useEffect(() => {
     if (navigator.geolocation && map) {
       navigator.geolocation.getCurrentPosition((position) => {
@@ -86,25 +108,64 @@ const Map: React.FC = () => {
     }
   }, [map]);
 
+  // Filtering by three search fields
   const handleSearch = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const value = event.target.value;
-    setSearchTerm(value);
-
-    const filtered = markers.filter((marker) =>
-      `${marker.lot}, ${marker.block}, ${marker.section}`.toLowerCase().includes(value.toLowerCase())
-    );
-    setFilteredMarkers(filtered);
+    const { name, value } = event.target;
+    setSearchTerm((prev) => {
+      const next = { ...prev, [name]: value };
+      // Only filter if all fields are present and not empty
+      if (next.lot && next.block && next.section) {
+        const regex = getLegalDescRegex(next.lot, next.block, next.section);
+        const matches = regex
+          ? washMo.features.filter(
+              (feature) => regex.test(feature.properties.legaldesc)
+            )
+          : [];
+        setFilteredMarkers(
+          matches.map((feature) => ({
+            lat: feature.geometry.coordinates[1],
+            lng: feature.geometry.coordinates[0],
+            label: feature.properties.owner
+              ? `${feature.properties.owner} (${feature.properties.legaldesc})`
+              : feature.properties.legaldesc,
+            // Optional: add more fields if your Marker type allows it
+          }))
+        );
+      } else {
+        setFilteredMarkers([]);
+      }
+      return next;
+    });
   };
 
   return (
     <div className={styles.mapContainer}>
-      <input
-        type="text"
-        placeholder="Search by Lot, Block, Section"
-        value={searchTerm}
-        onChange={handleSearch}
-        className={styles.searchInput}
-      />
+      <div className={styles.searchBar}>
+        <input
+          type="number"
+          placeholder="LOT"
+          name="lot"
+          value={searchTerm.lot || ''}
+          onChange={handleSearch}
+          className={styles.searchInput}
+        />
+        <input
+          type="number"
+          placeholder="BLK"
+          name="block"
+          value={searchTerm.block || ''}
+          onChange={handleSearch}
+          className={styles.searchInput}
+        />
+        <input
+          type="number"
+          placeholder="SEC"
+          name="section"
+          value={searchTerm.section || ''}
+          onChange={handleSearch}
+          className={styles.searchInput}
+        />
+      </div>
       <div ref={mapRef} className={styles.map} />
     </div>
   );
